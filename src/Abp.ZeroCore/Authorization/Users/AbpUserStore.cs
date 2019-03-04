@@ -381,6 +381,7 @@ namespace Abp.Authorization.Users
                 throw new InvalidOperationException(string.Format(CultureInfo.CurrentCulture, "Role {0} does not exist!", normalizedRoleName));
             }
 
+            await UserRepository.EnsureCollectionLoadedAsync(user, u => u.Roles, cancellationToken);
             user.Roles.Add(new UserRole(user.TenantId, user.Id, role.Id));
         }
 
@@ -429,18 +430,20 @@ namespace Abp.Authorization.Users
 
             Check.NotNull(user, nameof(user));;
 
-            var userRoles = from userRole in _userRoleRepository.GetAll()
-                            join role in _roleRepository.GetAll() on userRole.RoleId equals role.Id
-                            where userRole.UserId == user.Id
-                            select role.Name;
+            var userRoles = await _asyncQueryableExecuter.ToListAsync(from userRole in _userRoleRepository.GetAll()
+                join role in _roleRepository.GetAll() on userRole.RoleId equals role.Id
+                where userRole.UserId == user.Id
+                select role.Name);
 
-            var userOrganizationUnitRoles = from userOu in _userOrganizationUnitRepository.GetAll()
-                join roleOu in _organizationUnitRoleRepository.GetAll() on userOu.OrganizationUnitId equals roleOu.OrganizationUnitId
+            var userOrganizationUnitRoles = await _asyncQueryableExecuter.ToListAsync(
+                from userOu in _userOrganizationUnitRepository.GetAll()
+                join roleOu in _organizationUnitRoleRepository.GetAll() on userOu.OrganizationUnitId equals roleOu
+                    .OrganizationUnitId
                 join userOuRoles in _roleRepository.GetAll() on roleOu.RoleId equals userOuRoles.Id
                 where userOu.UserId == user.Id
-                select userOuRoles.Name;
+                select userOuRoles.Name);
 
-            return await _asyncQueryableExecuter.ToListAsync(userRoles.Union(userOrganizationUnitRoles));
+            return userRoles.Union(userOrganizationUnitRoles).ToList();
         }
 
         /// <summary>
